@@ -1,0 +1,102 @@
+role user (USER:agent, KMS:agent,	
+	H, Mul:hash_func,
+	AadharID, Name, HPwd, Pvt, Pwd, Msg, P :text,
+	SND, RCV, SND1, RCV1, SND2, RCV2, SND3, RCV3, SND4, RCV4:channel (dy))
+played_by USER
+def=
+local State:nat,  
+Nonce, TS, HAID, HName, Pub, MsgEnc, ACK:message
+	
+	const
+sec_1, sec_2, sec_3: protocol_id
+
+init State:=0
+
+transition
+
+1. State=0 /\RCV(start)=|> 
+State':=1 /\P':=new()
+/\HAID':=H(AadharID)
+/\HName':=H(Name)
+/\HPwd':=H(Pwd)
+/\Pvt':=Mul(HAID'.HName.HPwd)
+/\Pub':=Mul(Pvt.P)
+/\Nonce':=new()
+/\TS':=new()
+/\SND1(HAID.HName.Pub.Nonce.TS)
+/\secret(AadharID,sec_1,{USER,KMS})
+/\secret(Name,sec_2,{USER,KMS})
+/\secret(Pvt,sec_3,{USER})
+2. State=1 /\RCV2(ACK)=|> 
+State':=2
+/\Msg':=new()
+/\MsgEnc':=Mul(Msg.Pvt) 
+/\secret(Msg,sec_1,{USER,KMS})
+/\SND3(HAID.HName.Nonce.TS.MsgEnc)
+3. State=2 /\RCV4(ACK)=|> 
+State':=3
+end role
+
+
+role kms (KMS:agent, USER:agent,	
+	H, Mul:hash_func,
+	AadharID, Name, Msg :text,
+	SND, RCV, SND1, RCV1, SND2, RCV2, SND3, RCV3, SND4, RCV4:channel (dy))
+played_by KMS
+
+def=
+local State:nat,
+Nonce, TS, HAID, HName, Pub, MsgEnc, ACK:message
+	
+	const
+sec_1, sec_2, sec_3: protocol_id
+init State:=0
+transition
+
+1. State=0 /\RCV1(HAID.HName.Pub.Nonce.TS)=|>
+State':=1 /\SND2(ACK)
+2. State=1 /\RCV3(HAID.HName.Nonce.TS.MsgEnc)=|> 
+State':=2 /\Msg':=Mul(MsgEnc.Pub)
+/\SND4(ACK)
+end role
+
+
+role session(USER:agent, KMS:agent,	
+	H, Mul:hash_func,
+	AadharID, Name, HPwd, Pvt, Pwd, Msg, P :text,
+	Nonce, TS, HAID, HName, Pub, MsgEnc, ACK:message)
+
+def=
+local SND,RCV,SND1,RCV1,SND2,RCV2,SND3,RCV3,SND4,RCV4:channel(dy)
+	composition
+user (USER, KMS, H, Mul, AadharID, Name, HPwd, Pvt, Pwd, Msg, P, SND, RCV, SND1, RCV1, SND2, RCV2, SND3, RCV3, SND4, RCV4)
+
+/\kms (KMS, USER, H, Mul, AadharID, Name, Msg, SND, RCV, SND1, RCV1, SND2, RCV2, SND3, RCV3, SND4, RCV4)
+
+
+end role
+
+role environment()
+def=
+	const
+	user,kms:agent,
+	h,mul:hash_func,
+	aadharid, name, hpwd, pvt, pwd, msg, p:text,
+	nonce, ts, haid, hname, pub, msgenc, ack : message,
+	sec_1, sec_2, sec_3: protocol_id
+
+	intruder_knowledge = {user, kms, nonce, ts, haid, hname, pub, msgenc, ack}
+
+	composition
+		session(user, kms, h, mul, aadharid, name, hpwd, pvt, pwd, msg, p, nonce, ts, haid, hname, pub, msgenc, ack)
+		
+		/\session(kms, user, h, mul, aadharid, name, hpwd, pvt, pwd, msg, p, nonce, ts, haid, hname, pub, msgenc, ack)
+
+end role
+
+goal
+	secrecy_of sec_1
+	secrecy_of sec_2
+	secrecy_of sec_3
+end goal
+environment()
